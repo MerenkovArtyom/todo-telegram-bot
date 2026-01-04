@@ -3,3 +3,6 @@ __pycache__/
 *.pyc
 .env
 .env.*
+# Runtime audio files
+data/audio/*
+!data/audio/.gitkeep
