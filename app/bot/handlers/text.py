@@ -3,12 +3,13 @@ from aiogram.types import Message
 from aiogram.filters import Command
 from app.llm.task_extractor import extract_tasks
 from app.db.tasks_repo import add_task, get_tasks, delete_task
+from app.dates.parser import parse_date
 
 
 router = Router()
 
 
-@router.message() 
+@router.message(~Command('add', 'start', 'list', 'done')) 
 async def handle_text(message: Message):
     tasks = extract_tasks(message.text)
 
@@ -29,7 +30,7 @@ async def add_task_handler(message: types.Message):
         await message.answer("❌ Используй: /add текст задачи")
         return
 
-    add_task(message.from_user.id, text)
+    add_task(message.from_user.id, text) # parse_date('завтра')) #TODO добавить добавление даты
     await message.answer("✅ Задача добавлена")
 
 

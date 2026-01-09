@@ -1,10 +1,11 @@
 from app.db.database import get_connection
+from app.schemas.task import Task
 
-def add_task(user_id: int, text: str):
+def add_task(user_id: int, task: Task):
     with get_connection() as conn:
         conn.execute(
-            "INSERT INTO tasks (user_id, text) VALUES (?, ?)",
-            (user_id, text)
+            "INSERT INTO tasks (user_id, text, due_date) VALUES (?, ?, ?)",
+            (user_id, task.title, task.due_date)
         )
 
 def get_tasks(user_id: int):
