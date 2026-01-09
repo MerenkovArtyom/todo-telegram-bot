@@ -61,3 +61,10 @@ async def done_task_handler(message: types.Message):
     delete_task(task_id)
 
     await message.answer("🗑 Задача выполнена и удалена")
+
+
+@router.message(Command("start"))
+async def start_handler(message: types.Message):
+    await message.answer("Привет!\nДоступные команды:\n"
+                         "/list - список задач\n"
+                         "/done <id_задачи> - удалить задачу")
