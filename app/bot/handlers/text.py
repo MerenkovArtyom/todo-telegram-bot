@@ -44,8 +44,8 @@ async def list_tasks_handler(message: types.Message):
         return
 
     result = "📋 Ваши задачи:\n\n"
-    for task_id, text in tasks:
-        result += f"{task_id}. {text}\n"
+    for i, (_, text) in enumerate(tasks, start=1):
+        result += f"{i}. {text}\n"
 
     await message.answer(result)
 
@@ -54,10 +54,15 @@ async def list_tasks_handler(message: types.Message):
 async def done_task_handler(message: types.Message):
     parts = message.text.split()
 
+    tasks = get_tasks(message.from_user.id)
+
+    if not tasks:
+        await message.answer("📭 Список задач пуст")
+        return
+
     if len(parts) != 2 or not parts[1].isdigit():
         builder = InlineKeyboardBuilder()
 
-        tasks = get_tasks(message.from_user.id)
         for i in range(len(tasks)):
             builder.add(InlineKeyboardButton(
                 text=str(i+1),
@@ -68,10 +73,13 @@ async def done_task_handler(message: types.Message):
 
         return
     
+    index = int(parts[1]) - 1
+    if not (0 <= index < len(tasks)):
+        await message.answer("❌ Нет задачи с таким номером")
+        return
 
-    task_id = int(parts[1])
+    task_id = tasks[index][0]
     delete_task(task_id)
-
     await message.answer("🗑 Задача выполнена и удалена")
 
 
@@ -79,10 +87,18 @@ async def done_task_handler(message: types.Message):
 async def process_done(callback: CallbackQuery):
     parts = callback.data.split(":")
     if len(parts) == 2 and parts[1].isdigit():
-        task_id = int(parts[1])
+        index = int(parts[1]) - 1
+
+        tasks = get_tasks(callback.from_user.id)
+        if not (0 <= index < len(tasks)):
+            await callback.answer("❌ Нет задачи с таким номером", show_alert=True)
+            return
+
+        task_id = tasks[index][0]
         delete_task(task_id)
+
         await callback.message.edit_text("🗑 Задача выполнена и удалена")
-    await callback.answer()
+        await callback.answer()
 
 
 @router.message(Command("start"))
