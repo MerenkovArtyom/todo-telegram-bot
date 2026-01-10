@@ -1,6 +1,7 @@
-from aiogram import Router, types
-from aiogram.types import Message
+from aiogram import Router, types, F
+from aiogram.types import Message, InlineKeyboardButton, CallbackQuery
 from aiogram.filters import Command
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from app.llm.task_extractor import extract_tasks
 from app.db.tasks_repo import add_task, get_tasks, delete_task
 from app.dates.parser import parse_date
@@ -30,7 +31,7 @@ async def add_task_handler(message: types.Message):
         await message.answer("❌ Используй: /add текст задачи")
         return
 
-    add_task(message.from_user.id, text) # parse_date('завтра')) #TODO добавить добавление даты
+    add_task(message.from_user.id, text) #TODO добавить добавление даты
     await message.answer("✅ Задача добавлена")
 
 
@@ -54,8 +55,19 @@ async def done_task_handler(message: types.Message):
     parts = message.text.split()
 
     if len(parts) != 2 or not parts[1].isdigit():
-        await message.answer("❌ Используй: /done 2")
+        builder = InlineKeyboardBuilder()
+
+        tasks = get_tasks(message.from_user.id)
+        for i in range(len(tasks)):
+            builder.add(InlineKeyboardButton(
+                text=str(i+1),
+                callback_data=f"done:{i+1}"
+            ))
+        builder.adjust(3)
+        await message.answer("Выберите задачу:", reply_markup=builder.as_markup())
+
         return
+    
 
     task_id = int(parts[1])
     delete_task(task_id)
@@ -63,8 +75,31 @@ async def done_task_handler(message: types.Message):
     await message.answer("🗑 Задача выполнена и удалена")
 
 
+@router.callback_query(F.data.startswith("done:"))
+async def process_done(callback: CallbackQuery):
+    parts = callback.data.split(":")
+    if len(parts) == 2 and parts[1].isdigit():
+        task_id = int(parts[1])
+        delete_task(task_id)
+        await callback.message.edit_text("🗑 Задача выполнена и удалена")
+    await callback.answer()
+
+
 @router.message(Command("start"))
 async def start_handler(message: types.Message):
+    kb = [
+        [
+            types.KeyboardButton(text="/list"),
+            types.KeyboardButton(text="/done")
+        ],
+    ]
+    keyboard = types.ReplyKeyboardMarkup(
+        keyboard=kb,
+        resize_keyboard=True,
+        input_field_placeholder="Введите задачу"
+    )
+
     await message.answer("Привет!\nДоступные команды:\n"
                          "/list - список задач\n"
-                         "/done <id_задачи> - удалить задачу")
+                         "/done <id_задачи> - удалить задачу",
+                         reply_markup=keyboard)
