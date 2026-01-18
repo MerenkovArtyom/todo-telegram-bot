@@ -1,51 +1,54 @@
 from aiogram import Router, types, F
-from aiogram.types import Message, InlineKeyboardButton, CallbackQuery
 from aiogram.filters import Command
+from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from app.llm.task_extractor import extract_tasks
-from app.db.tasks_repo import add_task, get_tasks, delete_task
-from app.dates.parser import parse_date
 
+from app.bot import messages
+from app.services.tasks import create_tasks, delete_task_by_index, list_tasks
 
 router = Router()
 
 
-@router.message(~Command('add', 'start', 'list', 'done')) 
+@router.message(~Command("add", "start", "list", "done"))
 async def handle_text(message: Message):
-    tasks = extract_tasks(message.text)
+    tasks = create_tasks(message.from_user.id, message.text)
 
     if not tasks:
-        await message.answer("Не смог найти задачи 🤷‍♂️")
+        await message.answer(messages.NO_TASKS_FOUND)
         return
 
-    for text in tasks:
-        add_task(message.from_user.id, text)
-
-    await message.answer("✅ Задачи добавлены")
+    await message.answer(messages.TASKS_ADDED)
 
 
 @router.message(Command("add"))
 async def add_task_handler(message: types.Message):
     text = message.text.removeprefix("/add").strip()
     if not text:
-        await message.answer("❌ Используй: /add текст задачи")
+        await message.answer(messages.ADD_USAGE)
         return
 
-    add_task(message.from_user.id, text) #TODO добавить добавление даты
-    await message.answer("✅ Задача добавлена")
+    tasks = create_tasks(message.from_user.id, text)
+    if not tasks:
+        await message.answer(messages.NO_TASKS_FOUND)
+        return
+
+    await message.answer(messages.TASKS_ADDED)
 
 
 @router.message(Command("list"))
 async def list_tasks_handler(message: types.Message):
-    tasks = get_tasks(message.from_user.id)
+    tasks = list_tasks(message.from_user.id)
 
     if not tasks:
-        await message.answer("📭 Список задач пуст")
+        await message.answer(messages.NO_TASKS)
         return
 
-    result = "📋 Ваши задачи:\n\n"
-    for i, (_, text) in enumerate(tasks, start=1):
-        result += f"{i}. {text}\n"
+    result = messages.LIST_HEADER
+    for i, record in enumerate(tasks, start=1):
+        line = record.task.title
+        if record.task.due_date:
+            line += f" — до {record.task.due_date.isoformat()}"
+        result += f"{i}. {line}\n"
 
     await message.answer(result)
 
@@ -53,34 +56,32 @@ async def list_tasks_handler(message: types.Message):
 @router.message(Command("done"))
 async def done_task_handler(message: types.Message):
     parts = message.text.split()
-
-    tasks = get_tasks(message.from_user.id)
+    tasks = list_tasks(message.from_user.id)
 
     if not tasks:
-        await message.answer("📭 Список задач пуст")
+        await message.answer(messages.NO_TASKS)
         return
 
     if len(parts) != 2 or not parts[1].isdigit():
         builder = InlineKeyboardBuilder()
-
         for i in range(len(tasks)):
-            builder.add(InlineKeyboardButton(
-                text=str(i+1),
-                callback_data=f"done:{i+1}"
-            ))
+            builder.add(
+                InlineKeyboardButton(
+                    text=str(i + 1),
+                    callback_data=f"done:{i+1}",
+                )
+            )
         builder.adjust(3)
-        await message.answer("Выберите задачу:", reply_markup=builder.as_markup())
-
+        await message.answer(messages.DONE_PROMPT, reply_markup=builder.as_markup())
         return
-    
+
     index = int(parts[1]) - 1
-    if not (0 <= index < len(tasks)):
-        await message.answer("❌ Нет задачи с таким номером")
+    record = delete_task_by_index(message.from_user.id, index)
+    if not record:
+        await message.answer(messages.INVALID_INDEX)
         return
 
-    task_id = tasks[index][0]
-    delete_task(task_id)
-    await message.answer("🗑 Задача выполнена и удалена")
+    await message.answer(messages.DONE_CONFIRMED)
 
 
 @router.callback_query(F.data.startswith("done:"))
@@ -88,16 +89,12 @@ async def process_done(callback: CallbackQuery):
     parts = callback.data.split(":")
     if len(parts) == 2 and parts[1].isdigit():
         index = int(parts[1]) - 1
-
-        tasks = get_tasks(callback.from_user.id)
-        if not (0 <= index < len(tasks)):
-            await callback.answer("❌ Нет задачи с таким номером", show_alert=True)
+        record = delete_task_by_index(callback.from_user.id, index)
+        if not record:
+            await callback.answer(messages.INVALID_INDEX, show_alert=True)
             return
 
-        task_id = tasks[index][0]
-        delete_task(task_id)
-
-        await callback.message.edit_text("🗑 Задача выполнена и удалена")
+        await callback.message.edit_text(messages.DONE_CONFIRMED)
         await callback.answer()
 
 
@@ -106,16 +103,13 @@ async def start_handler(message: types.Message):
     kb = [
         [
             types.KeyboardButton(text="/list"),
-            types.KeyboardButton(text="/done")
+            types.KeyboardButton(text="/done"),
         ],
     ]
     keyboard = types.ReplyKeyboardMarkup(
         keyboard=kb,
         resize_keyboard=True,
-        input_field_placeholder="Введите задачу"
+        input_field_placeholder="Введите задачу",
     )
 
-    await message.answer("Привет!\nДоступные команды:\n"
-                         "/list - список задач\n"
-                         "/done <id_задачи> - удалить задачу",
-                         reply_markup=keyboard)
+    await message.answer(messages.START_TEXT, reply_markup=keyboard)

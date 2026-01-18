@@ -1,7 +1,3 @@
 aiogram==3.*
 python-dotenv
-faster-whisper
-llama-cpp-python
-dateparser
-pydantic
-loguru
+openai-whisper
