@@ -12,3 +12,13 @@ START_TEXT = (
     "/list - показать все задачи\n"
     "/done <номер> - отметить задачу выполненной"
 )
+
+VOICE_PROCESSING = "Processing voice message..."
+VOICE_TRANSCRIBE_ERROR = "Sorry, I could not process that voice message."
+VOICE_PREVIEW_HEADER = "Recognized text:"
+VOICE_TASKS_HEADER = "Tasks:"
+VOICE_CONFIRM_BUTTON = "Add"
+VOICE_CANCEL_BUTTON = "Cancel"
+VOICE_CANCELLED = "Canceled."
+VOICE_EXPIRED = "This request has expired."
+VOICE_NOT_ALLOWED = "This request is not yours."
