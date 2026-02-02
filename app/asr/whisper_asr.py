@@ -39,10 +39,13 @@ def transcribe(ogg_path: Path) -> str:
     wav_path = ogg_to_wav(ogg_path)
     model = load_model()
 
-    result = model.transcribe(
-        str(wav_path),
-        language="ru",
-        fp16=False
-    )
-
-    return result["text"].strip()
+    try:
+        result = model.transcribe(
+            str(wav_path),
+            language="ru",
+            fp16=False
+        )
+        return result["text"].strip()
+    finally:
+        if wav_path.exists():
+            wav_path.unlink()

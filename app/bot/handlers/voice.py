@@ -40,7 +40,17 @@ def _cleanup_pending() -> None:
         if now - pending.created_at > PENDING_TTL_SECONDS
     ]
     for request_id in expired:
-        _pending.pop(request_id, None)
+        pending = _pending.pop(request_id, None)
+        if pending:
+            _delete_audio_file(pending.ogg_path)
+
+
+def _delete_audio_file(path: Path) -> None:
+    try:
+        if path.exists():
+            path.unlink()
+    except OSError:
+        logger.exception("Failed to delete audio file: %s", path)
 
 
 def _format_tasks(items: list[Task]) -> str:
@@ -69,15 +79,18 @@ async def handle_voice(message: Message):
         text = transcribe(ogg_path)
     except Exception:
         logger.exception("Voice transcribe failed")
+        _delete_audio_file(ogg_path)
         await message.answer(messages.VOICE_TRANSCRIBE_ERROR)
         return
 
     if not text:
+        _delete_audio_file(ogg_path)
         await message.answer(messages.NO_TASKS_FOUND)
         return
 
     tasks = extract_tasks(text)
     if not tasks:
+        _delete_audio_file(ogg_path)
         await message.answer(messages.NO_TASKS_FOUND)
         return
 
@@ -134,6 +147,7 @@ async def confirm_voice(callback: CallbackQuery):
     _pending.pop(request_id, None)
     records = create_tasks(pending.user_id, pending.text)
     if not records:
+        _delete_audio_file(pending.ogg_path)
         await callback.message.edit_text(messages.NO_TASKS_FOUND)
         await callback.answer()
         return
@@ -145,6 +159,7 @@ async def confirm_voice(callback: CallbackQuery):
 
     await callback.message.edit_text(reply)
     await callback.answer()
+    _delete_audio_file(pending.ogg_path)
 
 
 @router.callback_query(F.data.startswith("cancel:"))
@@ -161,5 +176,6 @@ async def cancel_voice(callback: CallbackQuery):
         return
 
     _pending.pop(request_id, None)
+    _delete_audio_file(pending.ogg_path)
     await callback.message.edit_text(messages.VOICE_CANCELLED)
     await callback.answer()
