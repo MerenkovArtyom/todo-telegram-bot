@@ -4,12 +4,13 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from app.bot import messages
+from app.db.reminders_repo import delete_by_task
 from app.services.tasks import create_tasks, delete_task_by_index, list_tasks
 
 router = Router()
 
 
-@router.message(~Command("add", "start", "list", "done"))
+@router.message(~Command("add", "start", "list", "done", "remind", "reminders"))
 async def handle_text(message: Message):
     tasks = create_tasks(message.from_user.id, message.text)
 
@@ -81,6 +82,7 @@ async def done_task_handler(message: types.Message):
         await message.answer(messages.INVALID_INDEX)
         return
 
+    delete_by_task(message.from_user.id, record.id)
     await message.answer(messages.DONE_CONFIRMED)
 
 
@@ -94,6 +96,7 @@ async def process_done(callback: CallbackQuery):
             await callback.answer(messages.INVALID_INDEX, show_alert=True)
             return
 
+        delete_by_task(callback.from_user.id, record.id)
         await callback.message.edit_text(messages.DONE_CONFIRMED)
         await callback.answer()
 
@@ -105,6 +108,13 @@ async def start_handler(message: types.Message):
             types.KeyboardButton(text="/list"),
             types.KeyboardButton(text="/done"),
         ],
+        [
+            types.KeyboardButton(text="⏰ Напоминание"),
+        ],
+        [
+            types.KeyboardButton(text="➕ Добавить"),
+            types.KeyboardButton(text="✅ Удалить"),
+        ],
     ]
     keyboard = types.ReplyKeyboardMarkup(
         keyboard=kb,
@@ -113,3 +123,13 @@ async def start_handler(message: types.Message):
     )
 
     await message.answer(messages.START_TEXT, reply_markup=keyboard)
+
+
+@router.message(F.text == "➕ Добавить")
+async def add_button(message: types.Message):
+    await message.answer(messages.ADD_USAGE)
+
+
+@router.message(F.text == "✅ Удалить")
+async def delete_button(message: types.Message):
+    await done_task_handler(message)

@@ -37,6 +37,22 @@ def get_tasks(user_id: int) -> list[TaskRecord]:
 
     return tasks
 
+
+def get_task_by_id(user_id: int, task_id: int) -> TaskRecord | None:
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "SELECT id, text, due_date FROM tasks WHERE user_id = ? AND id = ?",
+            (user_id, task_id),
+        )
+        row = cursor.fetchone()
+
+    if not row:
+        return None
+
+    task_id, text, due_date = row
+    task = Task(title=text, due_date=_deserialize_due_date(due_date))
+    return TaskRecord(id=task_id, task=task)
+
 def delete_task(task_id: int) -> None:
     with get_connection() as conn:
         conn.execute(
