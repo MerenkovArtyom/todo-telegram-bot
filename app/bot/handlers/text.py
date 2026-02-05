@@ -10,7 +10,7 @@ from app.services.tasks import create_tasks, delete_task_by_index, list_tasks
 router = Router()
 
 
-@router.message(~Command("add", "start", "list", "done", "remind", "reminders"))
+@router.message(~Command("add", "start", "list", "done", "remind", "reminders", "unremind"))
 async def handle_text(message: Message):
     tasks = create_tasks(message.from_user.id, message.text)
 
@@ -109,11 +109,9 @@ async def start_handler(message: types.Message):
             types.KeyboardButton(text="/done"),
         ],
         [
-            types.KeyboardButton(text="⏰ Напоминание"),
-        ],
-        [
-            types.KeyboardButton(text="➕ Добавить"),
-            types.KeyboardButton(text="✅ Удалить"),
+            types.KeyboardButton(text="/remind"),
+            types.KeyboardButton(text="/reminders"),
+            types.KeyboardButton(text="/unremind"),
         ],
     ]
     keyboard = types.ReplyKeyboardMarkup(
@@ -123,13 +121,3 @@ async def start_handler(message: types.Message):
     )
 
     await message.answer(messages.START_TEXT, reply_markup=keyboard)
-
-
-@router.message(F.text == "➕ Добавить")
-async def add_button(message: types.Message):
-    await message.answer(messages.ADD_USAGE)
-
-
-@router.message(F.text == "✅ Удалить")
-async def delete_button(message: types.Message):
-    await done_task_handler(message)

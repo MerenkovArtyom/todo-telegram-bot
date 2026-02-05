@@ -35,8 +35,8 @@ def _format_remaining(delta: timedelta) -> str:
     if total_seconds <= 0:
         overdue = abs(total_seconds)
         if overdue < 60:
-            return "?????????? ?? <1 ???"
-        return f"?????????? ?? {overdue // 60} ???"
+            return "\u043f\u0440\u043e\u0441\u0440\u043e\u0447\u0435\u043d\u043e \u043d\u0430 <1 \u043c\u0438\u043d"
+        return f"\u043f\u0440\u043e\u0441\u0440\u043e\u0447\u0435\u043d\u043e \u043d\u0430 {overdue // 60} \u043c\u0438\u043d"
 
     minutes = total_seconds // 60
     hours, minutes = divmod(minutes, 60)
@@ -44,25 +44,24 @@ def _format_remaining(delta: timedelta) -> str:
 
     parts: list[str] = []
     if days:
-        parts.append(f"{days} ?")
+        parts.append(f"{days} \u0434")
     if hours:
-        parts.append(f"{hours} ?")
+        parts.append(f"{hours} \u0447")
     if minutes or not parts:
-        parts.append(f"{minutes} ???")
+        parts.append(f"{minutes} \u043c\u0438\u043d")
     return " ".join(parts)
 
 
 def _build_reminders_list(user_id: int):
     reminders = list_user_reminders(user_id)
     if not reminders:
-        return messages.REMIND_LIST_EMPTY, None
+        return messages.REMIND_LIST_EMPTY
 
     now = datetime.now(timezone.utc)
     lines = [messages.REMIND_LIST_HEADER]
-    builder = InlineKeyboardBuilder()
-    for reminder in reminders:
+    for i, reminder in enumerate(reminders, start=1):
         task_record = get_task_by_id(user_id, reminder.task_id)
-        title = task_record.task.title if task_record else "(?????? ???????)"
+        title = task_record.task.title if task_record else "(\u0437\u0430\u0434\u0430\u0447\u0430 \u0443\u0434\u0430\u043b\u0435\u043d\u0430)"
 
         next_dt = datetime.fromisoformat(reminder.next_fire_at)
         if next_dt.tzinfo is None:
@@ -71,17 +70,19 @@ def _build_reminders_list(user_id: int):
         local_dt = next_dt.astimezone(DEFAULT_TZ)
 
         lines.append(
-            f"- {title} ? {reminder.time_hhmm} (????? {remaining}, "
+            f"{i}. {title} \u2014 {reminder.time_hhmm} (\u0447\u0435\u0440\u0435\u0437 {remaining}, "
             f"{local_dt.strftime('%Y-%m-%d %H:%M %Z')})"
         )
-        builder.add(
-            InlineKeyboardButton(
-                text=f"?? {reminder.id}",
-                callback_data=f"remind_del:{reminder.id}",
-            )
-        )
-    builder.adjust(2)
-    return "\n".join(lines), builder.as_markup()
+    return "\n".join(lines)
+
+
+def _delete_reminder_by_index(user_id: int, index: int) -> bool:
+    reminders = list_user_reminders(user_id)
+    if not (0 <= index < len(reminders)):
+        return False
+
+    delete_reminder(reminders[index].id)
+    return True
 
 
 @router.message(Command("remind"))
@@ -108,27 +109,68 @@ async def remind_start(message: Message, state: FSMContext):
 
 @router.message(Command("reminders"))
 async def reminders_list(message: Message):
-    text, markup = _build_reminders_list(message.from_user.id)
-    await message.answer(text, reply_markup=markup)
+    text = _build_reminders_list(message.from_user.id)
+    await message.answer(text)
 
 
-@router.message(F.text == "? ???????????")
+@router.message(Command("unremind"))
+async def unremind_handler(message: Message):
+    parts = message.text.split()
+    reminders = list_user_reminders(message.from_user.id)
+    if not reminders:
+        await message.answer(messages.REMIND_LIST_EMPTY)
+        return
+
+    if len(parts) != 2 or not parts[1].isdigit():
+        builder = InlineKeyboardBuilder()
+        for i in range(len(reminders)):
+            builder.add(
+                InlineKeyboardButton(
+                    text=str(i + 1),
+                    callback_data=f"unremind:{i+1}",
+                )
+            )
+        builder.adjust(3)
+        await message.answer(
+            "\u0412\u044b\u0431\u0435\u0440\u0438 \u043d\u043e\u043c\u0435\u0440 \u043d\u0430\u043f\u043e\u043c\u0438\u043d\u0430\u043d\u0438\u044f \u0434\u043b\u044f \u0443\u0434\u0430\u043b\u0435\u043d\u0438\u044f:",
+            reply_markup=builder.as_markup(),
+        )
+        return
+
+    index = int(parts[1]) - 1
+    deleted = _delete_reminder_by_index(message.from_user.id, index)
+    if not deleted:
+        await message.answer(
+            "\u041d\u0435\u0442 \u043d\u0430\u043f\u043e\u043c\u0438\u043d\u0430\u043d\u0438\u044f \u0441 \u0442\u0430\u043a\u0438\u043c \u043d\u043e\u043c\u0435\u0440\u043e\u043c."
+        )
+        return
+
+    await message.answer(messages.REMIND_DELETED)
+
+
+@router.message(F.text == "\u23f0 \u041d\u0430\u043f\u043e\u043c\u0438\u043d\u0430\u043d\u0438\u0435")
 async def remind_button(message: Message, state: FSMContext):
     await remind_start(message, state)
 
 
-@router.callback_query(F.data.startswith("remind_del:"))
-async def delete_reminder_callback(callback: CallbackQuery):
-    parts = callback.data.split(":", maxsplit=1)
+@router.callback_query(F.data.startswith("unremind:"))
+async def unremind_callback(callback: CallbackQuery):
+    parts = callback.data.split(":")
     if len(parts) != 2 or not parts[1].isdigit():
         await callback.answer()
         return
 
-    reminder_id = int(parts[1])
-    delete_reminder(reminder_id)
-    text, markup = _build_reminders_list(callback.from_user.id)
-    await callback.message.edit_text(text, reply_markup=markup)
-    await callback.answer(messages.REMIND_DELETED)
+    index = int(parts[1]) - 1
+    deleted = _delete_reminder_by_index(callback.from_user.id, index)
+    if not deleted:
+        await callback.answer(
+            "\u041d\u0435\u0442 \u043d\u0430\u043f\u043e\u043c\u0438\u043d\u0430\u043d\u0438\u044f \u0441 \u0442\u0430\u043a\u0438\u043c \u043d\u043e\u043c\u0435\u0440\u043e\u043c.",
+            show_alert=True,
+        )
+        return
+
+    await callback.message.edit_text(messages.REMIND_DELETED)
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("remind_task:"))
